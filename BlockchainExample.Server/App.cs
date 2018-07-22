@@ -1,90 +1,97 @@
 ﻿using BlockchainExample.Shared;
+using Consul;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 
 namespace BlockchainExample.Server
 {
     enum MenuOptions
     {
-        StartServer = 1,
-        StopServer = 2,
-        MineBlock = 3,
-        DisplayBlockhain = 4,
-        Quit = 5
+        MineBlock = 1,
+        DisplayBlockhain = 2,
+        Quit = 3
     }
 
     class App
     {
         private TcpServer _server;
         private Blockchain _blockchain;
+        private readonly IConsulClient _consulClient;
+        private readonly string _nodeId;
 
-        public App()
+        public App(IConsulClient consulClient, TcpServer server)
         {
             _blockchain = new Blockchain();
+            _consulClient = consulClient;
+            _server = server;
+            _server.OnMessageReceived = OnMessageReceieved;
+            _nodeId = $"blockchain-node-{_server.Port}";
         }
 
-        private List<MenuOptions> GetValidMenuOptions()
+        public void Start()
         {
-            var options = new List<MenuOptions>()
+
+            StartNode();
+            Console.WriteLine($"Started node on port {_server.Port}");
+
+            var appRunning = true;
+
+            while (appRunning)
             {
-                MenuOptions.DisplayBlockhain
+                Console.WriteLine("Select an option");
+                Console.WriteLine("1. Mine Block");
+                Console.WriteLine("2. Display Local Blockchain");
+                Console.WriteLine("3. Quit");
+
+                int selectedOption;
+                while (!int.TryParse(Console.ReadLine(), out selectedOption) && new[] { 1, 2, 3 }.Contains(selectedOption))
+                    Console.WriteLine("Please input a valid option");
+
+                Console.Clear();
+
+                switch ((MenuOptions)selectedOption)
+                {
+                    case MenuOptions.MineBlock:
+                        MineBlock();
+                        break;
+                    case MenuOptions.DisplayBlockhain:
+                        DisplayLocalBlockchain();
+                        break;
+                    case MenuOptions.Quit:
+                        appRunning = false;
+                        break;
+                }
+
+                Console.WriteLine(string.Empty);
+                Console.WriteLine("====================================");
+                Console.WriteLine(string.Empty);
+            }
+
+            StopNode();
+        }
+
+        private void StartNode()
+        {
+            _server.StartServer();
+
+            var registration = new AgentServiceRegistration()
+            {
+                ID = _nodeId,
+                Name = "Blockchain Node",
+                Address = _server.IpAddress,
+                Port = _server.Port,
+                Tags = new[] { "blockchain-node" }
             };
 
-            if (_server == null || !_server.IsRunning)
-            {
-                options.Add(MenuOptions.StartServer);
-            }
-            else
-            {
-                options.Add(MenuOptions.StopServer);
-                options.Add(MenuOptions.MineBlock);
-            }
-
-            return options;
+            _consulClient.Agent.ServiceDeregister(_nodeId);
+            _consulClient.Agent.ServiceRegister(registration);
         }
 
-        public bool ExecuteMenuOption(MenuOptions option)
+        private void StopNode()
         {
-            if (!GetValidMenuOptions().Contains(option))
-                return false;
-
-            switch (option)
-            {
-                case MenuOptions.StartServer:
-                    StartServer();
-                    break;
-                case MenuOptions.StopServer:
-                    StopServer();
-                    break;
-                case MenuOptions.MineBlock:
-                    MineBlock();
-                    break;
-                case MenuOptions.DisplayBlockhain:
-                    DisplayLocalBlockchain();
-                    break;
-            }
-
-            return true;
-        }
-
-        private void StartServer()
-        {
-            Console.WriteLine("Enter Port to start server on, (use 6001, 6002 or 6003)");
-            int serverPort;
-            while (!int.TryParse(Console.ReadLine(), out serverPort))
-            {
-                Console.WriteLine("Specified port is in valid, try again...");
-            }
-
-            _server = TcpServer.StartServer(serverPort, OnMessageReceieved);
-            Console.WriteLine($"Started node on port {serverPort}");
-        }
-
-        private void StopServer()
-        {
+            _consulClient.Agent.ServiceDeregister(_nodeId);
             _server.Dispose();
             Console.WriteLine("Server stopped");
         }
@@ -99,23 +106,20 @@ namespace BlockchainExample.Server
 
         private void UpdateNetwork()
         {
-            var ports = new[] { 6001, 6002, 6003 };
+            var availableServices = _consulClient.Agent.Services().Result.Response
+                .Where(x => x.Value.Tags.Contains("blockchain-node") && x.Key != _nodeId).ToList();
 
-            var remoteServers = ports.Where(x => x != _server.Port).ToArray();
-
-            foreach (var remote in remoteServers)
+            foreach (var service in availableServices)
             {
                 var json = JsonConvert.SerializeObject(_blockchain.Chain);
-                using (var client = new TcpClient(remote))
+                using (var client = new TcpClient(service.Value.Address, service.Value.Port))
                 {
                     client.Connect();
                     client.Send(json);
                 }
 
-                Console.WriteLine($"Updated remote node, 127.0.0.1:{remote}");
+                Console.WriteLine($"Sent blockchain update to remote node: {service.Key}");
             }
-
-            Console.WriteLine("Updated network of Blockchain changes");
         }
 
         private void DisplayLocalBlockchain()
@@ -135,9 +139,15 @@ namespace BlockchainExample.Server
         private void OnMessageReceieved(string message)
         {
             var chain = JsonConvert.DeserializeObject<List<Block>>(message);
-            _blockchain.UpdateBlockchain(chain);
+            var result = _blockchain.UpdateBlockchain(chain);
 
-            Console.WriteLine("Message Received, attempting to update blockchain");
+            if (result)
+            {
+                Console.WriteLine("Update received from remote node, new blockchain accepted");
+            } else
+            {
+                Console.WriteLine("Update received from remote node, new blockchain rejected");
+            }
         }
     }
 }

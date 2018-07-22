@@ -8,25 +8,23 @@ namespace BlockchainExample.Server
     class TcpServer : IDisposable
     {
         public bool IsRunning { get; private set; }
+        public string IpAddress { get; private set; }
         public int Port { get; private set; }
         private TcpListener Listener { get; set; }
-        private Action<string> OnMessageReceived { get; set; }
+        public Action<string> OnMessageReceived { get; set; }
 
-        private TcpServer(IPAddress address, int port, Action<string> onMessageReceived) {
-            OnMessageReceived = onMessageReceived;
-            Listener = new TcpListener(address, port);
+        public TcpServer(string ipAddress, int port) {
+            OnMessageReceived = (x) => { };
+            Listener = new TcpListener(IPAddress.Parse(ipAddress), port);
+            Port = port;
+            IpAddress = ipAddress;
+        }
+
+        public void StartServer()
+        {
             Listener.Start();
             WaitForClients();
             IsRunning = true;
-            Port = port;
-        }
-
-        public static TcpServer StartServer(int port, Action<string> onMessageReceived)
-        {
-            var address = IPAddress.Parse("127.0.0.1");
-            var server = new TcpServer(address, port, onMessageReceived);
-
-            return server;
         }
 
         public void StopServer()

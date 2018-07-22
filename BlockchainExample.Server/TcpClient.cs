@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Net;
 using System.Text;
 
@@ -7,18 +6,20 @@ namespace BlockchainExample.Server
 {
     class TcpClient : IDisposable
     {
+        private readonly string _ipAddress;
         private readonly int _port;
         private readonly System.Net.Sockets.TcpClient _client;
 
-        public TcpClient(int port)
+        public TcpClient(string ipAddress, int port)
         {
+            _ipAddress = ipAddress;
             _port = port;
             _client = new System.Net.Sockets.TcpClient();
         }
 
         public void Connect()
         {
-            var ipAddress = IPAddress.Parse("127.0.0.1");
+            var ipAddress = IPAddress.Parse(_ipAddress);
             _client.Connect(ipAddress, _port);
         }
 

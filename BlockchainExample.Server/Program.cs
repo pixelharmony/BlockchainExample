@@ -1,6 +1,8 @@
-﻿using BlockchainExample.Shared;
-using Newtonsoft.Json;
-using System;
+﻿using Autofac;
+using BlockchainExample.Shared;
+using Consul;
+using Microsoft.Extensions.Configuration;
+using System.IO;
 
 namespace BlockchainExample.Server
 {
@@ -10,42 +12,32 @@ namespace BlockchainExample.Server
 
         static void Main(string[] args)
         {
-            Console.WriteLine("Example Distributed Blockchain");
 
-            bool running = true;
-            var app = new App();
+            var configuration = new ConfigurationBuilder()
+                .SetBasePath(Directory.GetCurrentDirectory())
+                .AddJsonFile("appsettings.json")
+                .AddEnvironmentVariables()
+                .AddCommandLine(args)
+                .Build();
 
-            while (running)
-            {
-                // Read option input
-                Console.WriteLine("Select an option");
-                Console.WriteLine("1: Start Server");
-                Console.WriteLine("2: Stop Server");
-                Console.WriteLine("3: Mine Block");
-                Console.WriteLine("4: Display Blockchain");
-                Console.WriteLine("5: Quit");
+            var container = BuildContainer(configuration);
 
-                int selectedOption;
-                while (!int.TryParse(Console.ReadLine(), out selectedOption))
-                    Console.WriteLine("Select a valid option");
+            var app = container.Resolve<App>();
+            app.Start();
+        }
 
-                if ((MenuOptions)selectedOption != MenuOptions.Quit)
-                {
-                    var result = app.ExecuteMenuOption((MenuOptions)selectedOption);
+        private static IContainer BuildContainer(IConfigurationRoot configuration)
+        {
+            var nodeIpAddress = configuration["Node:IpAddress"];
+            var nodePort = int.Parse(configuration["Node:Port"]);
 
-                    if (!result)
-                        Console.WriteLine("Can't do that right now, pick another option");
+            var builder = new ContainerBuilder();
 
-                    Console.WriteLine(string.Empty);
-                    Console.WriteLine("===========================================================");
-                    Console.WriteLine(string.Empty);
-                }
-                else
-                {
-                    running = false;
-                }
-            }
+            builder.Register(c => new TcpServer(nodeIpAddress, nodePort)).SingleInstance();
+            builder.RegisterType<ConsulClient>().As<IConsulClient>().SingleInstance();
+            builder.RegisterType<App>();
 
+            return builder.Build();
         }
     }
 }
