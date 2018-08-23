@@ -6,8 +6,11 @@ A quick example of setting up a basic P2P blockchain in dotnet core. This is pur
 
 To run this project you will need the dotnet core 2.1 SDK installed. If you haven't use this SDK before, see [here](https://www.microsoft.com/net/learn/get-started-with-dotnet-tutorial) for instructions on how to get started.
 
+You will also need an instance of Consul for P2P to work. I personally use Docker to run this.
+
 - Build the application to a DLL using `dotnet publish` in the root directory.
-- Start as many instances of the application as you like by running `dotnet BlockchainExample.Server.dll` in the publish output directory (using seperate console windows)
+- Optionally start your Docker Consul instance with `docker run -d -p 8300:8300 -p 8301:8301 -p 8302:8302 -p 8500:8500 -p 8600:8600 --name=dev-consul -e CONSUL_BIND_INTERFACE=eth0 consul`
+- Start as many instances of the application as you like by running `dotnet BlockchainExample.Server.dll -o Node:Port={YourPortNumber}` in the publish output directory (using seperate console windows)
 
 ## Issues
 
